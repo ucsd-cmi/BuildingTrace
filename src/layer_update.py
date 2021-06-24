@@ -1,8 +1,10 @@
 import os
-from trace import autoPilot
+from trace import autoPilot, autoPilotManhole
 from env_setup import getArcCredentials
 from arcgis.gis import GIS
 import sys
+import datetime
+import json
 
 class ArcgisError(Exception):
     """Base class for other exceptions"""
@@ -58,21 +60,77 @@ class ArcgisOperation:
         results = layer.edit_features(adds=features)
         return results
 
+def write_json(date_value, filename="../data/historical_date.json"):
+    # with open(filename) as json_file:
+    #     data = json.load(json_file)
+    #     data.append(date_value)
+      
+    # with open(filename,'w') as f:
+    #     json.dump(data, f, indent=4)
+    return
 
-def updateBuilding(date_val):
+def check_exist(date_value, filename="../data/historical_date.json"):
+    with open(filename) as json_file:
+        data = json.load(json_file)
+    return date_value in data
+
+def updateBuilding(date_val,trace_mode="single"):
     arcgis = ArcgisOperation()
-    building_layer = arcgis.contentSearch(arcgis.arc_username,"TracedBuildings_oneday")[0].layers[1]
-    features = arcgis.getFeatures(building_layer)
-    # loop to update
-    error_message, affected_buildings = autoPilot(date_val)
-    affected_set = set(affected_buildings)
-    if not error_message:
-        for feat in features:
-            binary_check =  "Yes" if feat.attributes['CAANtext'] in affected_set else "No"
-            feat.attributes['PossibleSource'] = binary_check
-            feat.attributes['CASE_DATE'] = date_val
-        update_result = building_layer.edit_features(updates=features)
-    return error_message, update_result
+    # loop to update, default detection mode
+    if trace_mode == "single":
+        building_layer = arcgis.contentSearch(arcgis.arc_username,"TracedBuildings_oneday")[0].layers[1]
+        features = arcgis.getFeatures(building_layer)
+        error_message, affected_buildings = autoPilot(date_val)
+        affected_set = set(affected_buildings)
+        if not error_message:
+            for feat in features:
+                binary_check =  "Yes" if feat.attributes['CAANtext'] in affected_set else "No"
+                feat.attributes['PossibleSource'] = binary_check
+                feat.attributes['CASE_DATE'] = date_val
+            update_result = building_layer.edit_features(updates=features)
+            success_cnt = sum(int(elem['success']) for elem in update_result['updateResults'])
+            fail_cnt = len(update_result['updateResults']) - success_cnt
+            report = {'update_success_count':success_cnt,'update_fail_count':fail_cnt}
+            return error_message, report
+        return error_message,{}
+    else:
+        # check three modes
+        building_layer = arcgis.contentSearch(arcgis.arc_username,"multi_trace_layer")[0].layers[0]
+        features = arcgis.getFeatures(building_layer)
+        mode_col_map = {'detection':'Detection','monitoring':'Monitoring','sampling':'Sampling'}
+        status_types = ["Not Currently Monitored","Currently Monitored + Not Sampled","Currently Monitored + Sampled + Not Detected","Currently Monitored + Sampled + Detected"]
+        status_sign_cnt = [0]*len(features)
+        for mode, name in mode_col_map.items():
+            error_message, affected_buildings = autoPilot(date_val,mode=mode)
+            affected_set = set(affected_buildings)
+            if not error_message:
+                for idx,feat in enumerate(features):
+                    binary_check =  "Yes" if feat.attributes['CAANtext'] in affected_set else "No"
+                    if binary_check == "Yes":status_sign_cnt[idx] += 1
+                    feat.attributes[name] = binary_check
+                    feat.attributes['Date'] = datetime.datetime.strptime(date_val,'%m/%d/%y')+datetime.timedelta(days=1) # add one day to counter UTC To PST difference
+            else:
+                return error_message, {}
+        for idx,feat in enumerate(features):
+            feat.attributes['Status'] = status_types[status_sign_cnt[idx]]
+        if trace_mode == "multi":
+            update_result = building_layer.edit_features(updates=features)
+            success_cnt = sum(int(elem['success']) for elem in update_result['updateResults']) # assumption: elem would always have key "success"
+            fail_cnt = len(update_result['updateResults']) - success_cnt
+            report = {'update_success_count':success_cnt,'update_fail_count':fail_cnt}
+            print(report)
+        elif trace_mode == "historical":
+            if check_exist(date_val):
+                return None, {"message":"already updated!"}
+            else:
+                write_json(date_val)
+            historical_layer = arcgis.contentSearch(arcgis.arc_username,"historical_data_layer")[0].layers[0]
+            add_result = arcgis.addToTable(historical_layer,features)
+            success_cnt = sum(int(elem['success']) for elem in add_result['addResults']) # assumption: elem would always have key "success"
+            fail_cnt = len(add_result['addResults']) - success_cnt
+            report = {'add_success_count':success_cnt,'add_fail_count':fail_cnt}
+            print(report)
+        return None, report
 
 if __name__ == "__main__":
     targets = sys.argv
@@ -80,5 +138,5 @@ if __name__ == "__main__":
     if len(targets) > 1:
         error_message, affected_buildings = updateBuilding(targets[1])
     else:
-        error_message, affected_buildings = updateBuilding('2/17')
+        error_message, affected_buildings = updateBuilding('5/3/21')
     print(error_message,affected_buildings)

@@ -3,3 +3,16 @@ __pycache__
 .DS_Store
 .env
 data
+Archive.zip
+src/0.jpg
+src/AffectedBuildings0305.csv
+src/BuildingStatus0406.xls
+src/drop_in.py
+src/file_path
+src/file_today.csv
+src/sample_updated_trace_dropin.csv
+src/sftpsync.sh
+src/test.jpg
+src/xixi.csv
+src/yjkeygoanywhere
+src/yjkeygoanywhere.pub

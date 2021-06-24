@@ -23,9 +23,9 @@ class TraceGraph:
         self.graph = None
         self.manhole_graph = None
         self.trace_graph = None
-        self.df_pipe = geopandas.read_file('../data/network/Sewer_Pipe.shp')
-        self.df_manhole = geopandas.read_file('../data/network/Sewer_Manhole.shp')
-        self.df_buildings= geopandas.read_file('../data/network/Sewer_Buildings.shp')
+        self.df_pipe = geopandas.read_file('../data/network2/SewerPipe.shp')
+        self.df_manhole = geopandas.read_file('../data/network2/AllVertices0414.shp')
+        self.df_buildings= geopandas.read_file('../data/network2/SewerBuildings.shp')
         self.manhole_to_coords_map = {elem['UCSD_ID']:(elem['geometry'].x,elem['geometry'].y) for _,elem in self.df_manhole[["UCSD_ID","geometry"]].iterrows()}
         self.coords_to_manhole_map = MirrorMap(self.manhole_to_coords_map).mirror
         self.build_to_coords_map = defaultdict(set)
@@ -35,6 +35,7 @@ class TraceGraph:
         self.edges = None
         self.mirror_edges = None
         self.graph_without_all_downstream = dict() # might not include all downstream but simplify graph
+        self.barriers = set()
     def getSewerEdge(self):
         sewer_edges = defaultdict(set)
         for index, row in self.df_pipe.iterrows():
@@ -47,7 +48,9 @@ class TraceGraph:
         self.edges = sewer_edges
         self.mirror_edges = MirrorMap(self.edges).mirror
     def getFlow(self,seg_loc,visited,res,origin,mode="downstream",only_mode=None):
+        # check if already visit or the current location is a barrier(a negative manhole)
         if seg_loc in visited: return
+        if ((seg_loc in self.coords_to_manhole_map) and (self.coords_to_manhole_map[seg_loc] in self.barriers)): return
         visited.add(seg_loc)
         if (seg_loc in self.coords_to_manhole_map) and (self.coords_to_manhole_map[seg_loc] != origin) and ((not only_mode) or only_mode == "manhole"): 
             res.add(self.coords_to_manhole_map[seg_loc])
