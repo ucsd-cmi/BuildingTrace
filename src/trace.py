@@ -118,7 +118,7 @@ class Trace:
         error_message, barriers = self.get_negative_barriers(date_value, mode)
         if error_message:
             return error_message, affected_buildings
-        print(barriers)
+        print("barriers, ", barriers)
         self.mh_graph.barriers = barriers
         if mode != "paused monitoring":
             self.mh_graph.barriers = self.mh_graph.barriers.union(
