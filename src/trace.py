@@ -38,6 +38,26 @@ class Trace:
         table = worksheet.get_all_values()
         return pd.DataFrame(table[3:], columns=table[2])
 
+    def getMovingAverage(self, day_window, date):
+        result = {"total positivity rate": -1, "residential positivity rate": -1, "non-residential positivity rate": -1}
+        
+        try:
+            latest_date_obj = datetime.datetime.strptime(date, '%m/%d/%y')
+            date_strings = [ (latest_date_obj - datetime.timedelta(days=i)).strftime('%-m/%-d/%-y') for i in range(day_window)]
+        except:
+           return "invalid date, please try in the format of %m/%d/%y",result
+        
+        filtered_data = self.df[date_strings].apply(lambda x: x.str.strip()).replace("", "0").astype(float) > 0
+        result["total positivity rate"] = filtered_data.mean().mean()
+        
+        data_with_status = pd.concat([self.df["Residential"], filtered_data], axis=1)
+        status_percent_result = data_with_status.groupby(["Residential"]).mean().mean(axis=1)
+        
+        result["residential positivity rate"] = status_percent_result["Residential"]
+        result["non-residential positivity rate"] = status_percent_result["Non-Residential"]
+        
+        return None, result
+
     def get_manhole_map(self, date_value, mode="detection"):
         """
         get a map of manholes to whether they are positive given a particular date,
@@ -163,8 +183,8 @@ class Trace:
         self.mh_graph.barriers = barriers
         self.mh_graph.buildGraph()
         waste_df = self.read_sheet()
-        drop_in = waste_df[['SampleID', 'ManholeID', 'Building(s)']]
-        drop_in.columns = ['SAMPLE_ID', 'MANHOLE_ID', 'BUILDING']
+        drop_in = waste_df[['SamplerID', 'ManholeID', 'Building(s)', 'Area', 'Residential']]
+        drop_in.columns = ['SAMPLE_ID', 'MANHOLE_ID', 'BUILDING', 'AREA', 'RESIDENTIAL']
         _, manhole_trace_list = self.MultiTraceManholes(date_value)
         full_mh_trace_df = pd.DataFrame(manhole_trace_list)
         full_mh_trace_df['TEST_DATE'] = date_value
@@ -236,13 +256,15 @@ def autoPilot(date_value, drop=False, mode="detection"):
         return error_message, message
     return tracing.get_affected_buildings(date_value, mode)
 
+def traceStats(date_value, time_window=7):
+    tracing = Trace()
+    return tracing.getMovingAverage(time_window,date_value)
 
 if __name__ == "__main__":
     targets = sys.argv
     if len(targets) == 2:
-        error_message, affected_buildings = autoPilot(targets[1])
+        print(traceStats('12/1'))
     elif len(targets) == 3:
         error_message, affected_buildings = autoPilot(targets[1], True)
     else:
         error_message, affected_buildings = autoPilotManhole('6/7/21')
-    print(error_message, affected_buildings)
