@@ -22,9 +22,10 @@ class InvalidDateError(TraceError):
 class Trace:
     def __init__(self):
         self.df = self.read_sheet()
+        self.clean_df = self.read_sheet("Results_clean")
         self.mh_graph = TraceGraph()
 
-    def read_sheet(self):
+    def read_sheet(self, tab_name="Results_for_test"):
         """
         return a panda dataframe of the newest spread sheet
         """
@@ -34,27 +35,23 @@ class Trace:
         gc = gspread.authorize(credentials)
         spreadsheet_key = '1mKOeKWf8f_mUmxbDQeHMA-P6lk6SfZf4Q9CRBH44EHU'
         book = gc.open_by_key(spreadsheet_key)
-        worksheet = book.worksheet("Results_for_test")
+        worksheet = book.worksheet(tab_name)
         table = worksheet.get_all_values()
         return pd.DataFrame(table[3:], columns=table[2])
 
-    def getMovingAverage(self, day_window, date):
+    def getMovingAverage(self, day_window):
         result = {"total positivity rate": -1, "residential positivity rate": -1, "non-residential positivity rate": -1}
         
-        try:
-            latest_date_obj = datetime.datetime.strptime(date, '%m/%d/%y')
-            date_strings = [ (latest_date_obj - datetime.timedelta(days=i)).strftime('%-m/%-d/%-y') for i in range(day_window)]
-        except:
-           return "invalid date, please try in the format of %m/%d/%y",result
-        
-        filtered_data = self.df[date_strings].apply(lambda x: x.str.strip()).replace("", "0").astype(float) > 0
-        result["total positivity rate"] = filtered_data.mean().mean()
-        
-        data_with_status = pd.concat([self.df["Residential"], filtered_data], axis=1)
-        status_percent_result = data_with_status.groupby(["Residential"]).mean().mean(axis=1)
-        
-        result["residential positivity rate"] = status_percent_result["Residential"]
-        result["non-residential positivity rate"] = status_percent_result["Non-Residential"]
+        positive_stats = self.clean_df[self.clean_df["Building(s)"] == "Positive"].iloc[:,-day_window:].replace("", "0").astype(float)
+        total_stats = self.clean_df[self.clean_df["Building(s)"] == "Total"].iloc[:,-day_window:].replace("", "0").astype(float)
+
+        total_pos_rate = (positive_stats.sum() / total_stats.sum()).mean()
+        residential_pos_rate = positive_stats.iloc[1].sum()/total_stats.iloc[1].sum()
+        nonresidential_pos_rate = positive_stats.iloc[0].sum()/total_stats.iloc[0].sum()
+
+        result["total positivity rate"] = total_pos_rate
+        result["residential positivity rate"] = residential_pos_rate
+        result["non-residential positivity rate"] = nonresidential_pos_rate
         
         return None, result
 
@@ -256,14 +253,14 @@ def autoPilot(date_value, drop=False, mode="detection"):
         return error_message, message
     return tracing.get_affected_buildings(date_value, mode)
 
-def traceStats(date_value, time_window=7):
+def traceStats(time_window=7):
     tracing = Trace()
-    return tracing.getMovingAverage(time_window,date_value)
+    return tracing.getMovingAverage(time_window)
 
 if __name__ == "__main__":
     targets = sys.argv
     if len(targets) == 2:
-        print(traceStats('12/1'))
+        print(traceStats(targets[1]))
     elif len(targets) == 3:
         error_message, affected_buildings = autoPilot(targets[1], True)
     else:

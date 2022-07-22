@@ -83,7 +83,7 @@ def handler(event, context):
         input_mode = json.loads(event["body"] or "{}").get(
             "mode", "affected_buildings")
         input_day_window = json.loads(event["body"] or "{}").get(
-            "day_window", None)
+            "day_window", 7)
     except:
         input_pass = event["body"].get("password", "wrong")
         input_date = event["body"].get("date", None)
@@ -113,7 +113,7 @@ def handler(event, context):
                 day_window = int(input_day_window)
             except:
                 day_window = 7  # the default value
-            error_message, results = traceStats(input_date, day_window)
+            error_message, results = traceStats(day_window)
         else:
             error_message = "Methods not supported"
         if error_message:
