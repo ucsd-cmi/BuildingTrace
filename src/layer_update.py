@@ -104,7 +104,7 @@ def updateBuilding(date_val, trace_mode="single"):
         affected_set = set(affected_buildings)
         if not error_message:
             for feat in features:
-                binary_check = "Yes" if feat.attributes['CAANtext'] in affected_set else "No"
+                binary_check = "Yes" if str(feat.attributes['OBJECTID']) in affected_set else "No"
                 feat.attributes['PossibleSource'] = binary_check
                 feat.attributes['CASE_DATE'] = date_val
             update_result = building_layer.edit_features(updates=features)
@@ -117,9 +117,8 @@ def updateBuilding(date_val, trace_mode="single"):
         return error_message, {}
     else:
         # check three modes
-        building_layer = arcgis.contentSearch(
-            arcgis.arc_username, "multi_trace_layer")[0].layers[0]
-        features = arcgis.getFeatures(building_layer)
+        building_layer = arcgis.getItemById('a9c95f7d9df444f5b526857d998a7df7').layers[0]
+        features = building_layer.query(where="Date=null")
         mode_col_map = {'detection': 'Detection',
                         'monitoring': 'Monitoring', 'sampling': 'Sampling'}
         status_types = ["Not Currently Monitored", "Currently Monitored + Not Sampled",
@@ -130,7 +129,7 @@ def updateBuilding(date_val, trace_mode="single"):
             affected_set = set(affected_buildings)
             if not error_message:
                 for idx, feat in enumerate(features):
-                    binary_check = "Yes" if feat.attributes['CAANtext'] in affected_set else "No"
+                    binary_check = "Yes" if str(feat.attributes['OBJECTID']) in affected_set else "No"
                     if binary_check == "Yes":
                         status_sign_cnt[idx] += 1
                     feat.attributes[name] = binary_check
@@ -144,10 +143,10 @@ def updateBuilding(date_val, trace_mode="single"):
         pause_set = set(paused_buildings)
 
         for idx, feat in enumerate(features):
-            if feat.attributes['CAANtext'] in black_list:
+            if feat.attributes['OBJECTID'] in black_list:
                 feat.attributes['Status'] = status_types[1]
             else:
-                if (status_sign_cnt[idx] == 0) and (feat.attributes['CAANtext'] in pause_set):
+                if (status_sign_cnt[idx] == 0) and (feat.attributes['OBJECTID'] in pause_set):
                     feat.attributes['Status'] = "Monitoring Paused Over Summer"
                 else:
                     feat.attributes['Status'] = status_types[status_sign_cnt[idx]]
@@ -161,20 +160,19 @@ def updateBuilding(date_val, trace_mode="single"):
                       'update_fail_count': fail_cnt}
             print(report)
         elif trace_mode == "historical":
-            reponse_json = write_date(date_val)
-            if reponse_json['message'] == 'already updated!':
-                return None, reponse_json
-            else:
-                historical_layer = arcgis.contentSearch(
-                    arcgis.arc_username, "historical_data_layer")[0].layers[0]
-                add_result = arcgis.addToTable(historical_layer, features)
-                # assumption: elem would always have key "success"
-                success_cnt = sum(int(elem['success'])
-                                  for elem in add_result['addResults'])
-                fail_cnt = len(add_result['addResults']) - success_cnt
-                report = {'add_success_count': success_cnt,
-                          'add_fail_count': fail_cnt}
-                print(report)
+            # reponse_json = write_date(date_val)
+            # if reponse_json['message'] == 'already updated!':
+            #     return None, reponse_json
+            # else:
+            historical_layer = arcgis.getItemById('a9c95f7d9df444f5b526857d998a7df7').layers[0]
+            add_result = arcgis.addToTable(historical_layer, features)
+            # assumption: elem would always have key "success"
+            success_cnt = sum(int(elem['success'])
+                                for elem in add_result['addResults'])
+            fail_cnt = len(add_result['addResults']) - success_cnt
+            report = {'add_success_count': success_cnt,
+                        'add_fail_count': fail_cnt}
+            print(report)
         return None, report
 
 
@@ -183,7 +181,7 @@ def write_date(date_val):
         ('date', date_val),
     )
     response = requests.get(
-        'https://coprocognos.ucsd.edu:5000/write_date', params=params)
+        'http://trace-clerk.default.svc.cluster.local:5939/write_date', params=params)
     reponse_json = response.json()
     print(reponse_json)
     return reponse_json

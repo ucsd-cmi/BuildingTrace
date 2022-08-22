@@ -1,7 +1,7 @@
 import geopandas
 from collections import defaultdict
 import networkx as nx
-
+import pandas as pd
 
 class MirrorMap:
     # take in a map and invert key and value
@@ -124,6 +124,16 @@ class TraceGraph:
                     temp_val = self.coords_to_manhole_map[val]
                 graph[temp_key].add(temp_val)
         self.graph = graph
+
+    # Builds graph from USD connection sheet.
+    def buildGraphFromSheet(self):
+        mamhole_building_df = pd.read_excel('../data/TRACE/usd_connections.xlsx',header=1)[['Manhole ID', 'Building ID(s)']]
+        mamhole_building_map_intermediate = dict(zip(mamhole_building_df['Manhole ID'].astype(str), mamhole_building_df['Building ID(s)'].astype(str)))
+        mamhole_building_map = {key: set(value.split(",")) for key, value in mamhole_building_map_intermediate.items()}
+        
+        self.trace_graph = mamhole_building_map
+        return mamhole_building_df
+
 
     def toNetworkGraph(self, g_type="manhole"):
         if g_type == "manhole":

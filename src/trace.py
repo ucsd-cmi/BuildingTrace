@@ -21,7 +21,7 @@ class InvalidDateError(TraceError):
 
 class Trace:
     def __init__(self):
-        self.df = self.read_sheet()
+        self.df = self.read_sheet_usd()
         self.clean_df = self.read_sheet("Results_clean")
         self.mh_graph = TraceGraph()
 
@@ -38,20 +38,41 @@ class Trace:
         worksheet = book.worksheet(tab_name)
         table = worksheet.get_all_values()
         return pd.DataFrame(table[3:], columns=table[2])
+    
+    def read_sheet_usd(self, tab_name="USD Wastewater Sampling"):
+        """
+        return a panda dataframe of the newest spread sheet
+        """
+        scope = ['https://spreadsheets.google.com/feeds']
+        credentials = ServiceAccountCredentials.from_json_keyfile_name(
+            '../.env/google_credentials.json', scope)
+        gc = gspread.authorize(credentials)
+        spreadsheet_key = '1aYZWSRUX7HRIcH0Y9LCaxkzAWTpwfvM8_xGaowjgBsM'
+        book = gc.open_by_key(spreadsheet_key)
+        worksheet = book.worksheet(tab_name)
+        table = worksheet.get_all_values()
+        return pd.DataFrame(table[3:], columns=table[1])
 
     def getMovingAverage(self, day_window):
-        result = {"total positivity rate": -1, "residential positivity rate": -1, "non-residential positivity rate": -1}
-        
-        positive_stats = self.clean_df[self.clean_df["Building(s)"] == "Positive"].iloc[:,-day_window:].replace("", "0").astype(float)
-        total_stats = self.clean_df[self.clean_df["Building(s)"] == "Total"].iloc[:,-day_window:].replace("", "0").astype(float)
+        result = {
+        "7-day total positivity rate avg": -1, 
+        "7-day residential positivity rate avg": -1, 
+        "7-day non-residential positivity rate avg": -1,
+        "total positivity rate": -1, 
+        "residential positivity rate": -1, 
+        "non-residential positivity rate": -1}
+        positive_average_stats = self.clean_df[self.clean_df["Building(s)"] == "Seven-day Average Positivity Rate (%)"].iloc[:,-1]
+        positive_stats = self.clean_df[self.clean_df["Building(s)"] == "Single Day Positivity Rate (%)"].iloc[:,-1]
 
-        total_pos_rate = (positive_stats.sum() / total_stats.sum()).mean()
-        residential_pos_rate = positive_stats.iloc[1].sum()/total_stats.iloc[1].sum()
-        nonresidential_pos_rate = positive_stats.iloc[0].sum()/total_stats.iloc[0].sum()
-
-        result["total positivity rate"] = total_pos_rate
-        result["residential positivity rate"] = residential_pos_rate
-        result["non-residential positivity rate"] = nonresidential_pos_rate
+        try:
+            result["7-day non-residential positivity rate avg"] = positive_average_stats.iloc[0]
+            result["7-day residential positivity rate avg"] = positive_average_stats.iloc[1]
+            result["7-day total positivity rate avg"] = positive_average_stats.iloc[2]
+            result["non-residential positivity rate"] = positive_stats.iloc[0]
+            result["residential positivity rate"] = positive_stats.iloc[1]
+            result["total positivity rate"] = positive_stats.iloc[2]
+        except:
+            return "unexpected error, index not found", None
         
         return None, result
 
@@ -135,12 +156,11 @@ class Trace:
         error_message, barriers = self.get_negative_barriers(date_value, mode)
         if error_message:
             return error_message, affected_buildings
-        print("barriers, ", barriers)
         self.mh_graph.barriers = barriers
         if mode != "paused monitoring":
             self.mh_graph.barriers = self.mh_graph.barriers.union(
                 self.get_paused_manholes())
-        self.mh_graph.buildGraph()
+        self.mh_graph.buildGraphFromSheet()
         for mh_case in pos_mh_list:
             try:
                 affected_buildings += list(self.mh_graph.trace_graph[mh_case])
@@ -162,7 +182,7 @@ class Trace:
         if error_message:
             return error_message, affected_manholes
         self.mh_graph.barriers = barriers.union(self.get_paused_manholes())
-        self.mh_graph.buildGraph()
+        self.mh_graph.buildGraphFromSheet()
         for mh_case in pos_mh_list:
             try:
                 affected_manholes += list(self.mh_graph.manhole_graph[mh_case])
@@ -178,7 +198,7 @@ class Trace:
         if error_message:
             return error_message, saved_path
         self.mh_graph.barriers = barriers
-        self.mh_graph.buildGraph()
+        self.mh_graph.builbuildGraphFromSheetdGraph()
         waste_df = self.read_sheet()
         drop_in = waste_df[['SamplerID', 'ManholeID', 'Building(s)', 'Area', 'Residential']]
         drop_in.columns = ['SAMPLE_ID', 'MANHOLE_ID', 'BUILDING', 'AREA', 'RESIDENTIAL']
@@ -203,7 +223,7 @@ class Trace:
                         'monitoring': 'Monitoring', 'sampling': 'Sampling'}
         status_types = ["Not Currently Monitored", "Currently Monitored + Not Sampled",
                         "Currently Monitored + Sampled + Not Detected", "Currently Monitored + Sampled + Detected"]
-        self.mh_graph.buildGraph()
+        self.mh_graph.buildGraphFromSheet()
         status_sign_cnt = [0]*len(self.mh_graph.manhole_graph)
         manhole_ids = list(self.mh_graph.manhole_graph.keys())
         manhole_cq_map = self.getCQManholeMap(date_val)
