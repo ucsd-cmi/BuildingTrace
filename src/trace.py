@@ -22,7 +22,7 @@ class InvalidDateError(TraceError):
 class Trace:
     def __init__(self):
         self.df = self.read_sheet_usd()
-        self.clean_df = self.read_sheet("Results_clean")
+        self.clean_df = self.read_sheet_usd()
         self.mh_graph = TraceGraph()
 
     def read_sheet(self, tab_name="Results_for_test"):
@@ -53,7 +53,7 @@ class Trace:
         table = worksheet.get_all_values()
         return pd.DataFrame(table[3:], columns=table[1])
 
-    def getMovingAverage(self, day_window):
+    def getMovingAverage(self, day):
         result = {
         "7-day total positivity rate avg": -1, 
         "7-day residential positivity rate avg": -1, 
@@ -61,8 +61,11 @@ class Trace:
         "total positivity rate": -1, 
         "residential positivity rate": -1, 
         "non-residential positivity rate": -1}
-        positive_average_stats = self.clean_df[self.clean_df["Building(s)"] == "Seven-day Average Positivity Rate (%)"].iloc[:,-1]
-        positive_stats = self.clean_df[self.clean_df["Building(s)"] == "Single Day Positivity Rate (%)"].iloc[:,-1]
+        try:
+            positive_average_stats = self.clean_df[self.clean_df["Building(s)"] == "Seven-day Average Positivity Rate (%)"][day]
+            positive_stats = self.clean_df[self.clean_df["Building(s)"] == "Single Day Positivity Rate (%)"][day]
+        except:
+            return "unexpected error, day not found", None
 
         try:
             result["7-day non-residential positivity rate avg"] = positive_average_stats.iloc[0]
@@ -198,7 +201,7 @@ class Trace:
         if error_message:
             return error_message, saved_path
         self.mh_graph.barriers = barriers
-        self.mh_graph.builbuildGraphFromSheetdGraph()
+        self.mh_graph.buildGraphFromSheet()
         waste_df = self.read_sheet()
         drop_in = waste_df[['SamplerID', 'ManholeID', 'Building(s)', 'Area', 'Residential']]
         drop_in.columns = ['SAMPLE_ID', 'MANHOLE_ID', 'BUILDING', 'AREA', 'RESIDENTIAL']
@@ -282,6 +285,7 @@ if __name__ == "__main__":
     if len(targets) == 2:
         print(traceStats(targets[1]))
     elif len(targets) == 3:
-        error_message, affected_buildings = autoPilot(targets[1], True)
+        error_message, affected_buildings = autoPilot(targets[1])
+        print(affected_buildings)
     else:
         error_message, affected_buildings = autoPilotManhole('6/7/21')

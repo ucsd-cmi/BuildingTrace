@@ -88,7 +88,6 @@ def handler(event, context):
         input_pass = event["body"].get("password", "wrong")
         input_date = event["body"].get("date", None)
         input_mode = event["body"].get("mode", "affected_buildings")
-        input_day_window = event["body"].get("day_window", None)
     if input_pass != service_password:
         message = "Wrong Password"
         status_code = 403
@@ -109,11 +108,7 @@ def handler(event, context):
         elif input_mode == "secondary_api":
             error_message, results = autoPilotManhole(input_date)
         elif input_mode == "stats":
-            try:
-                day_window = int(input_day_window)
-            except:
-                day_window = 7  # the default value
-            error_message, results = traceStats(day_window)
+            error_message, results = traceStats(input_date)
         else:
             error_message = "Methods not supported"
         if error_message:

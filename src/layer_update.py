@@ -160,12 +160,13 @@ def updateBuilding(date_val, trace_mode="single"):
                       'update_fail_count': fail_cnt}
             print(report)
         elif trace_mode == "historical":
-            # reponse_json = write_date(date_val)
-            # if reponse_json['message'] == 'already updated!':
-            #     return None, reponse_json
-            # else:
-            historical_layer = arcgis.getItemById('a9c95f7d9df444f5b526857d998a7df7').layers[0]
-            add_result = arcgis.addToTable(historical_layer, features)
+            reponse_json = write_date(date_val)
+            # TODO: check error message first before add data to the table.
+            if reponse_json['message'] == 'already updated!':
+                return None, reponse_json
+            else:
+                historical_layer = arcgis.getItemById('a9c95f7d9df444f5b526857d998a7df7').layers[0]
+                add_result = arcgis.addToTable(historical_layer, features)
             # assumption: elem would always have key "success"
             success_cnt = sum(int(elem['success'])
                                 for elem in add_result['addResults'])
@@ -180,6 +181,7 @@ def write_date(date_val):
     params = (
         ('date', date_val),
     )
+    # TODO: add error handling for write date request.
     response = requests.get(
         'http://trace-clerk.default.svc.cluster.local:5939/write_date', params=params)
     reponse_json = response.json()

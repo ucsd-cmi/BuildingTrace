@@ -1,0 +1,109 @@
+cat <<EOF | kubectl apply -f -
+# trace-deployment.yaml
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: trace-deployment
+spec:
+  selector:
+    matchLabels:
+      app: trace-deployment
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: trace-deployment
+    spec:
+      containers:
+        - name: trace
+          image: yizong/trace_algo
+          imagePullPolicy: Always
+          resources:
+            limits:
+              cpu: 10m
+              memory: 80Mi
+            requests:
+              cpu: 10m
+              memory: 80Mi
+          ports:
+            - containerPort: 8080
+              name: "http-server"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: trace
+spec:
+  ports:
+    - name: client
+      port: 8080
+  selector:
+    app: trace-deployment
+EOF
+
+cat <<EOF | kubectl apply -f -
+# gke-deployment.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-clerk
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 30Gi
+  storageClassName: standard-rwo
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: clerk-deployment
+spec:
+  selector:
+    matchLabels:
+      app: clerk-deployment
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: clerk-deployment
+    spec:
+      volumes:
+        - name: pvc-clerk-vol
+          persistentVolumeClaim:
+            claimName: pvc-clerk
+      containers:
+        - name: clerk
+          image: yizong/clerk
+          imagePullPolicy: Always
+          resources:
+            limits:
+              cpu: 10m
+              memory: 80Mi
+            requests:
+              cpu: 10m
+              memory: 80Mi
+          ports:
+            - containerPort: 5939
+              name: "http-server"
+          volumeMounts:
+            - mountPath: "/usr/share/clerk/data"
+              name: pvc-clerk-vol
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: trace-clerk
+spec:
+  ports:
+    - name: client
+      port: 5939
+      targetPort: 5939
+  selector:
+    app: clerk-deployment
+EOF
+
+cat <<- "EOF" > historical_date.json
+[]
+EOF
