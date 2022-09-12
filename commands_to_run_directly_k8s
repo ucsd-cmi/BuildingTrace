@@ -107,3 +107,5 @@ EOF
 cat <<- "EOF" > historical_date.json
 []
 EOF
+
+kubectl run --image=curlimages/curl -it --restart=Never --rm client-pod curl 'http://exposure.default.svc.cluster.local:8080/get_exposure_dates_for_building?caan=34'

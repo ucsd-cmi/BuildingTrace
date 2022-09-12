@@ -286,6 +286,6 @@ if __name__ == "__main__":
         print(traceStats(targets[1]))
     elif len(targets) == 3:
         error_message, affected_buildings = autoPilot(targets[1])
-        print(affected_buildings)
+        print(affected_buildings, error_message)
     else:
         error_message, affected_buildings = autoPilotManhole('6/7/21')

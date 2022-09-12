@@ -2,6 +2,8 @@ import geopandas
 from collections import defaultdict
 import networkx as nx
 import pandas as pd
+from oauth2client.service_account import ServiceAccountCredentials
+import gspread
 
 class MirrorMap:
     # take in a map and invert key and value
@@ -134,13 +136,22 @@ class TraceGraph:
 
     # Builds graph from USD connection sheet.
     def buildGraphFromSheet(self):
-        mamhole_building_df = pd.read_excel('../data/TRACE/usd_connections.xlsx',header=1)[['ManholeID', 'Building ID(s)']]
+        scope = ['https://spreadsheets.google.com/feeds']
+        credentials = ServiceAccountCredentials.from_json_keyfile_name(
+            '../.env/google_credentials.json', scope)
+        gc = gspread.authorize(credentials)
+        spreadsheet_key = '1aYZWSRUX7HRIcH0Y9LCaxkzAWTpwfvM8_xGaowjgBsM'
+        book = gc.open_by_key(spreadsheet_key)
+        worksheet = book.worksheet("USD Wastewater Sampling")
+        table = worksheet.get_all_values()
+
+        mamhole_building_df = pd.DataFrame(table[3:], columns=table[1])[['ManholeID', 'Building ID(s)']]
+        mamhole_building_df = mamhole_building_df.applymap(lambda key: str(int(float(key))) if is_non_nan_float(key) else key)
         mamhole_building_map_intermediate = dict(zip(mamhole_building_df['ManholeID'].astype(str), mamhole_building_df['Building ID(s)'].astype(str)))
         mamhole_building_map = {key: set(value.split(",")) for key, value in mamhole_building_map_intermediate.items()}
         
         # casts strings of floats to strings of int.
-        self.trace_graph = {str(int(float(key))) if is_non_nan_float(key) else key: value for key, value in mamhole_building_map.items()}
-
+        self.trace_graph = {key if is_non_nan_float(key) else key: value for key, value in mamhole_building_map.items()}
         return mamhole_building_df
 
 
