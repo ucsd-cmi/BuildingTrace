@@ -130,7 +130,7 @@ def updateBuilding(date_val, trace_mode="single"):
             affected_set = set(affected_buildings)
             if not error_message:
                 for idx, feat in enumerate(features):
-                    binary_check = "Yes" if feat.attributes['CAANtext'] in affected_set else "No"
+                    binary_check = "Yes" if feat.attributes['CAANtext_INTERNAL'] in affected_set else "No"
                     if binary_check == "Yes":
                         status_sign_cnt[idx] += 1
                     feat.attributes[name] = binary_check
@@ -144,10 +144,10 @@ def updateBuilding(date_val, trace_mode="single"):
         pause_set = set(paused_buildings)
 
         for idx, feat in enumerate(features):
-            if feat.attributes['CAANtext'] in black_list:
+            if feat.attributes['CAANtext_INTERNAL'] in black_list:
                 feat.attributes['Status'] = status_types[1]
             else:
-                if (status_sign_cnt[idx] == 0) and (feat.attributes['CAANtext'] in pause_set):
+                if (status_sign_cnt[idx] == 0) and (feat.attributes['CAANtext_INTERNAL'] in pause_set):
                     feat.attributes['Status'] = "Monitoring Paused Over Summer"
                 else:
                     feat.attributes['Status'] = status_types[status_sign_cnt[idx]]

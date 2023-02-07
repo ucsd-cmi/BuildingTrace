@@ -4,7 +4,7 @@ import json
 
 password_dir = os.path.join('..', '.env', 'password.json')
 aws_dir = os.path.join('.env', 'aws_config.json')
-arc_dir = os.path.join('..', '.env', 'arcgis_credentials.json')
+arc_dir = os.path.join('..', '.env', 'arcgis_ucsd.json')
 def auth(keyfile_path):
     '''
     set-up secrets for authentication to Google

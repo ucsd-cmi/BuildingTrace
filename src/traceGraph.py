@@ -37,9 +37,9 @@ class TraceGraph:
         self.coords_to_manhole_map = MirrorMap(
             self.manhole_to_coords_map).mirror
         self.build_to_coords_map = defaultdict(set)
-        for _, elem in self.df_buildings[["CAANtext", "geometry"]].iterrows():
-            if elem['CAANtext']:
-                self.build_to_coords_map[elem['CAANtext']].add(
+        for _, elem in self.df_buildings[["BID", "geometry"]].iterrows():
+            if elem['BID']:
+                self.build_to_coords_map[elem['BID']].add(
                     (elem['geometry'].x, elem['geometry'].y))
         self.coords_to_build_map = MirrorMap(
             self.build_to_coords_map, True).mirror

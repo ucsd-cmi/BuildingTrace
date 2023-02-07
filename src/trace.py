@@ -39,19 +39,26 @@ class Trace:
         table = worksheet.get_all_values()
         return pd.DataFrame(table[3:], columns=table[2])
 
-    def getMovingAverage(self, day_window):
-        result = {"total positivity rate": -1, "residential positivity rate": -1, "non-residential positivity rate": -1}
-        
-        positive_stats = self.clean_df[self.clean_df["Building(s)"] == "Positive"].iloc[:,-day_window:].replace("", "0").astype(float)
-        total_stats = self.clean_df[self.clean_df["Building(s)"] == "Total"].iloc[:,-day_window:].replace("", "0").astype(float)
+    def getMovingAverage(self, day):
+        result = {
+        "7-day total positivity rate avg": -1, 
+        "7-day residential positivity rate avg": -1, 
+        "7-day non-residential positivity rate avg": -1,
+        "total positivity rate": -1, 
+        "residential positivity rate": -1, 
+        "non-residential positivity rate": -1}
+        positive_average_stats = self.clean_df[self.clean_df["Building(s)"] == "Seven-day Average Positivity Rate (%)"].iloc[:,-1]
+        positive_stats = self.clean_df[self.clean_df["Building(s)"] == "Single Day Positivity Rate (%)"].iloc[:,-1]
 
-        total_pos_rate = (positive_stats.sum() / total_stats.sum()).mean()
-        residential_pos_rate = positive_stats.iloc[1].sum()/total_stats.iloc[1].sum()
-        nonresidential_pos_rate = positive_stats.iloc[0].sum()/total_stats.iloc[0].sum()
-
-        result["total positivity rate"] = total_pos_rate
-        result["residential positivity rate"] = residential_pos_rate
-        result["non-residential positivity rate"] = nonresidential_pos_rate
+        try:
+            result["7-day non-residential positivity rate avg"] = positive_average_stats.iloc[0]
+            result["7-day residential positivity rate avg"] = positive_average_stats.iloc[1]
+            result["7-day total positivity rate avg"] = positive_average_stats.iloc[2]
+            result["non-residential positivity rate"] = positive_stats.iloc[0]
+            result["residential positivity rate"] = positive_stats.iloc[1]
+            result["total positivity rate"] = positive_stats.iloc[2]
+        except:
+            return "unexpected error, index not found", None
         
         return None, result
 
@@ -260,8 +267,9 @@ def traceStats(time_window=7):
 if __name__ == "__main__":
     targets = sys.argv
     if len(targets) == 2:
-        print(traceStats(targets[1]))
+        print(traceStats())
     elif len(targets) == 3:
-        error_message, affected_buildings = autoPilot(targets[1], True)
+        error_message, affected_buildings = autoPilot(targets[1], False)
+        print(affected_buildings)
     else:
         error_message, affected_buildings = autoPilotManhole('6/7/21')
