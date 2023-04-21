@@ -45,7 +45,7 @@ class Trace:
         """
         scope = ['https://spreadsheets.google.com/feeds']
         credentials = ServiceAccountCredentials.from_json_keyfile_name(
-            '../.env/google_credentials.json', scope)
+            '../.env/google_usd_credentials.json', scope)
         gc = gspread.authorize(credentials)
         spreadsheet_key = '1aYZWSRUX7HRIcH0Y9LCaxkzAWTpwfvM8_xGaowjgBsM'
         book = gc.open_by_key(spreadsheet_key)
