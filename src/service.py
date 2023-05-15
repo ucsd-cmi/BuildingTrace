@@ -109,11 +109,7 @@ def handler(event, context):
         elif input_mode == "secondary_api":
             error_message, results = autoPilotManhole(input_date)
         elif input_mode == "stats":
-            try:
-                day_window = int(input_day_window)
-            except:
-                day_window = 7  # the default value
-            error_message, results = traceStats(day_window)
+            error_message, results = traceStats(input_date)
         else:
             error_message = "Methods not supported"
         if error_message:

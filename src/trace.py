@@ -3,10 +3,12 @@ import gspread
 from traceGraph import TraceGraph
 from oauth2client.service_account import ServiceAccountCredentials
 from pandas.io.json import json_normalize
-import datetime
+import requests
+import json
+from datetime import datetime, timedelta, date
+import numpy as np
 import sys
 import os
-from drop_in import drop_in
 
 
 class TraceError(Exception):
@@ -20,10 +22,17 @@ class InvalidDateError(TraceError):
 
 
 class Trace:
-    def __init__(self):
-        self.df = self.read_sheet()
-        self.clean_df = self.read_sheet("Results_clean")
+    def __init__(self, date_value):
+        self.read_db(date_value)
         self.mh_graph = TraceGraph()
+        self.residential_map = self.get_residential_map()
+    
+    def get_residential_map(self):
+        ip = 'http://34.68.95.12:8080/query'
+        data_string = '{"query": "query getBuildingInfo {getBuildingInfo { internalCaan isResidential }}"}'
+        r = requests.post(ip, data=data_string, headers={"Content-Type":"application/json"})
+        r_json = r.json()
+        return {elem['internalCaan']:elem['isResidential'] for elem in r_json['data']['getBuildingInfo']}
 
     def read_sheet(self, tab_name="Results_for_test"):
         """
@@ -37,7 +46,55 @@ class Trace:
         book = gc.open_by_key(spreadsheet_key)
         worksheet = book.worksheet(tab_name)
         table = worksheet.get_all_values()
-        return pd.DataFrame(table[3:], columns=table[2])
+        self.df = pd.DataFrame(table[3:], columns=table[2])
+    
+    def read_db(self, date_value):
+        ip = 'http://34.68.95.12:8080/query'
+        date_formatted = datetime.strptime(date_value, "%m/%d/%y").isoformat() + "Z"
+        # Todo: Add error handling for requests
+        data_string = '{"query": "query getQpcrCqs($startDate: Time!, $endDate: Time!) { getQpcrCqs(startDate: $startDate, endDate: $endDate) { date manholeID samplerID cqValue } }", "variables": {"startDate": "' + date_formatted + '", "endDate": "' + date_formatted + '"}}'
+        r = requests.post(ip, data=data_string, headers={"Content-Type":"application/json"})
+        r_json = r.json()
+        r_json = r_json['data']['getQpcrCqs']
+        db_df = pd.DataFrame.from_dict(r_json)
+        dates = db_df['date'].unique()
+        df = pd.pivot_table(db_df,index=['manholeID'], columns='date',values='cqValue', fill_value=0)
+        df.columns = [datetime.fromisoformat(i.replace("Z", "+00:00")).strftime("%-m/%-d/%y") for i in df.columns]
+        df = df.reset_index()
+        df.rename(columns = {"manholeID": "ManholeID"}, inplace=True)
+        
+        self.df = df
+
+    def getPositivityCounts(self,day):
+        r_total_cnt = sum(self.residential_map.values())
+        nr_total_cnt = len(self.residential_map)-r_total_cnt
+        r_pos_cnt = 0
+        nr_pos_cnt = 0
+        
+        self.read_db(day)
+        error_message,caans = self.get_affected_buildings(day)
+        if error_message:
+            return error_message, {"r_total_cnt": r_total_cnt, "nr_total_cnt":nr_total_cnt, "r_pos_cnt":r_pos_cnt, "nr_pos_cnt":nr_pos_cnt}
+        positive_map = {caan: self.residential_map[caan] for caan in caans}
+
+        r_pos_cnt = sum(positive_map.values())
+        nr_pos_cnt = len(positive_map)-r_pos_cnt
+        return None, {"r_total_cnt": r_total_cnt, "nr_total_cnt":nr_total_cnt, "r_pos_cnt":r_pos_cnt, "nr_pos_cnt":nr_pos_cnt}
+
+    def getSingleDayRatios(self, day):
+        result = {
+        "total positivity rate": -1, 
+        "residential positivity rate": -1, 
+        "non-residential positivity rate": -1}
+        error_message, current_day_stats = self.getPositivityCounts(day)
+        if error_message:
+            return error_message, result
+        
+        result["non-residential positivity rate"] = current_day_stats["nr_pos_cnt"]/current_day_stats["nr_total_cnt"]
+        result["residential positivity rate"] = current_day_stats["r_pos_cnt"]/current_day_stats["r_total_cnt"]
+        result["total positivity rate"] = (current_day_stats["nr_pos_cnt"]+current_day_stats["r_pos_cnt"])/(current_day_stats["nr_total_cnt"]+current_day_stats["r_total_cnt"])
+        
+        return None, result
 
     def getMovingAverage(self, day):
         result = {
@@ -47,20 +104,26 @@ class Trace:
         "total positivity rate": -1, 
         "residential positivity rate": -1, 
         "non-residential positivity rate": -1}
-        positive_average_stats = self.clean_df[self.clean_df["Building(s)"] == "Seven-day Average Positivity Rate (%)"].iloc[:,-1]
-        positive_stats = self.clean_df[self.clean_df["Building(s)"] == "Single Day Positivity Rate (%)"].iloc[:,-1]
-
-        try:
-            result["7-day non-residential positivity rate avg"] = positive_average_stats.iloc[0]
-            result["7-day residential positivity rate avg"] = positive_average_stats.iloc[1]
-            result["7-day total positivity rate avg"] = positive_average_stats.iloc[2]
-            result["non-residential positivity rate"] = positive_stats.iloc[0]
-            result["residential positivity rate"] = positive_stats.iloc[1]
-            result["total positivity rate"] = positive_stats.iloc[2]
-        except:
-            return "unexpected error, index not found", None
         
-        return None, result
+        #Calculates 7 day averages.
+        ratios = []
+        start_date = datetime.strptime(day, "%m/%d/%y")
+        for i in range(7):
+            current_date = start_date - timedelta(days=i)
+            current_day_string = current_date.strftime("%-m/%-d/%y")
+            error_message, current_day_stats = self.getSingleDayRatios(current_day_string)
+            if error_message:
+                return error_message, result
+            ratios.append(current_day_stats)
+        
+        result["non-residential positivity rate"] = '{:.2f}%'.format(ratios[0]["non-residential positivity rate"]*100)
+        result["residential positivity rate"] = '{:.2f}%'.format(ratios[0]["residential positivity rate"]*100)
+        result["total positivity rate"] = '{:.2f}%'.format(ratios[0]["total positivity rate"]*100)
+        
+        result["7-day non-residential positivity rate avg"] = '{:.2f}%'.format(float(np.mean([r["non-residential positivity rate"] for r in ratios]))*100)
+        result["7-day residential positivity rate avg"] = '{:.2f}%'.format(float(np.mean([r["residential positivity rate"] for r in ratios]))*100)
+        result["7-day total positivity rate avg"] = '{:.2f}%'.format(float(np.mean([r["total positivity rate"] for r in ratios]))*100)
+        return result
 
     def get_manhole_map(self, date_value, mode="detection"):
         """
@@ -178,7 +241,7 @@ class Trace:
         return error_message, list(set(affected_manholes+pos_mh_list))
 
     def exportDropIn(self, date_value):
-        year = datetime.date.today().year
+        year = date.today().year
         saved_path = '/tmp/dropin%s.csv' % (
             "".join(date_value.split("/"))+str(year))
         error_message, barriers = self.get_negative_barriers(date_value)
@@ -242,7 +305,7 @@ def autoPilotManhole(date_value):
 
 
 def autoPilot(date_value, drop=False, mode="detection"):
-    tracing = Trace()
+    tracing = Trace(date_value)
     if drop:
         error_message, path = tracing.exportDropIn(date_value)
         if error_message:
@@ -260,14 +323,14 @@ def autoPilot(date_value, drop=False, mode="detection"):
         return error_message, message
     return tracing.get_affected_buildings(date_value, mode)
 
-def traceStats(time_window=7):
-    tracing = Trace()
-    return tracing.getMovingAverage(time_window)
+def traceStats(date):
+    tracing = Trace(date)
+    return tracing.getMovingAverage(date)
 
 if __name__ == "__main__":
     targets = sys.argv
     if len(targets) == 2:
-        print(traceStats())
+        print(traceStats("2/7/23"))
     elif len(targets) == 3:
         error_message, affected_buildings = autoPilot(targets[1], False)
         print(affected_buildings)
