@@ -26,7 +26,17 @@ class Trace:
         self.read_db(date_value)
         self.mh_graph = TraceGraph()
         self.residential_map = self.get_residential_map()
+        self.manhole_caan_mapping = self.get_manhole_caan_map()
+        self.manhole_residential_map = {manhole:sum(self.residential_map[caan] for caan in caans) > 0 for manhole, caans in self.manhole_caan_mapping.items()}
     
+    def get_manhole_caan_map(self):
+        ip = 'http://34.68.95.12:8080/query'
+        data_string = '{"query": "query getManholeCaanMappings {getManholeCaanMappings { manholeID internalCaan }}"}'
+        r = requests.post(ip, data=data_string, headers={"Content-Type":"application/json"})
+        r_json = r.json()
+        manhole_map = {elem['manholeID']:set(elem['internalCaan']) for elem in r_json['data']['getManholeCaanMappings']}
+        return manhole_map
+
     def get_residential_map(self):
         ip = 'http://34.68.95.12:8080/query'
         data_string = '{"query": "query getBuildingInfo {getBuildingInfo { internalCaan isResidential }}"}'
@@ -51,9 +61,10 @@ class Trace:
     def read_db(self, date_value):
         ip = 'http://34.68.95.12:8080/query'
         date_formatted = datetime.strptime(date_value, "%m/%d/%y").isoformat() + "Z"
-        # Todo: Add error handling for requests
         data_string = '{"query": "query getQpcrCqs($startDate: Time!, $endDate: Time!) { getQpcrCqs(startDate: $startDate, endDate: $endDate) { date manholeID samplerID cqValue } }", "variables": {"startDate": "' + date_formatted + '", "endDate": "' + date_formatted + '"}}'
+        # Exception will be thrown if the request failed
         r = requests.post(ip, data=data_string, headers={"Content-Type":"application/json"})
+        r.raise_for_status()
         r_json = r.json()
         r_json = r_json['data']['getQpcrCqs']
         db_df = pd.DataFrame.from_dict(r_json)
@@ -65,21 +76,21 @@ class Trace:
         
         self.df = df
 
-    def getPositivityCounts(self,day):
-        r_total_cnt = sum(self.residential_map.values())
-        nr_total_cnt = len(self.residential_map)-r_total_cnt
-        r_pos_cnt = 0
-        nr_pos_cnt = 0
-        
-        self.read_db(day)
-        error_message,caans = self.get_affected_buildings(day)
-        if error_message:
-            return error_message, {"r_total_cnt": r_total_cnt, "nr_total_cnt":nr_total_cnt, "r_pos_cnt":r_pos_cnt, "nr_pos_cnt":nr_pos_cnt}
-        positive_map = {caan: self.residential_map[caan] for caan in caans}
+    def getPositivityCounts(self, day):
+        try:
+            self.read_db(day)
+        except requests.exceptions.RequestException as e:
+            return "failed to read from DB", {}
 
-        r_pos_cnt = sum(positive_map.values())
-        nr_pos_cnt = len(positive_map)-r_pos_cnt
-        return None, {"r_total_cnt": r_total_cnt, "nr_total_cnt":nr_total_cnt, "r_pos_cnt":r_pos_cnt, "nr_pos_cnt":nr_pos_cnt}
+        mh_map = self.get_manhole_map(day)
+        total_cnt = len(mh_map)
+        total_pos_cnt = sum([mh_map[val] > 0 for val in mh_map])
+        r_total_cnt = sum([self.manhole_residential_map[val] for val in mh_map])
+        nr_total_cnt = sum([not self.manhole_residential_map[val] for val in mh_map])
+        r_pos_cnt = sum([(mh_map[val] > 0) and (self.manhole_residential_map[val]) for val in mh_map])
+        nr_pos_cnt = sum([(mh_map[val] > 0) and (not self.manhole_residential_map[val]) for val in mh_map])
+        return None, {"r_total_cnt": r_total_cnt, "nr_total_cnt":nr_total_cnt, "r_pos_cnt":r_pos_cnt, "nr_pos_cnt":nr_pos_cnt, "total_cnt":total_cnt, "total_pos_cnt":total_pos_cnt}
+
 
     def getSingleDayRatios(self, day):
         result = {
@@ -105,24 +116,32 @@ class Trace:
         "residential positivity rate": -1, 
         "non-residential positivity rate": -1}
         
-        #Calculates 7 day averages.
-        ratios = []
+        #Calculate 7 day averages.
+        cnts = []
         start_date = datetime.strptime(day, "%m/%d/%y")
         for i in range(7):
             current_date = start_date - timedelta(days=i)
             current_day_string = current_date.strftime("%-m/%-d/%y")
-            error_message, current_day_stats = self.getSingleDayRatios(current_day_string)
+            error_message, current_day_stats = self.getPositivityCounts(current_day_string)
             if error_message:
                 return error_message, result
-            ratios.append(current_day_stats)
+            cnts.append(current_day_stats)
         
-        result["non-residential positivity rate"] = '{:.2f}%'.format(ratios[0]["non-residential positivity rate"]*100)
-        result["residential positivity rate"] = '{:.2f}%'.format(ratios[0]["residential positivity rate"]*100)
-        result["total positivity rate"] = '{:.2f}%'.format(ratios[0]["total positivity rate"]*100)
+        print(cnts)
+        result["non-residential positivity rate"] = '{:.2f}%'.format((cnts[0]["nr_pos_cnt"]/cnts[0]["nr_total_cnt"])*100) if cnts[0]["nr_total_cnt"] > 0 else "N/A"
+        result["residential positivity rate"] = '{:.2f}%'.format((cnts[0]["r_pos_cnt"]/cnts[0]["r_total_cnt"])*100) if cnts[0]["r_total_cnt"] > 0 else "N/A"
+        result["total positivity rate"] = '{:.2f}%'.format((cnts[0]["total_pos_cnt"]/cnts[0]["total_cnt"])*100) if cnts[0]["total_cnt"] > 0 else "N/A"
         
-        result["7-day non-residential positivity rate avg"] = '{:.2f}%'.format(float(np.mean([r["non-residential positivity rate"] for r in ratios]))*100)
-        result["7-day residential positivity rate avg"] = '{:.2f}%'.format(float(np.mean([r["residential positivity rate"] for r in ratios]))*100)
-        result["7-day total positivity rate avg"] = '{:.2f}%'.format(float(np.mean([r["total positivity rate"] for r in ratios]))*100)
+        
+        total_pos_case_7 = sum([cnt["total_pos_cnt"] for cnt in cnts])
+        total_r_pos_case_7 = sum([cnt["r_pos_cnt"] for cnt in cnts])
+        total_nr_pos_case_7 = sum([cnt["nr_pos_cnt"] for cnt in cnts])
+        total_case_7 = sum([cnt["total_cnt"] for cnt in cnts])
+        total_r_case_7 = sum([cnt["r_total_cnt"] for cnt in cnts])
+        total_nr_case_7 = sum([cnt["nr_total_cnt"] for cnt in cnts])
+        result["7-day non-residential positivity rate avg"] = '{:.2f}%'.format((total_nr_pos_case_7/total_nr_case_7)*100) if total_nr_case_7 > 0 else "N/A"
+        result["7-day residential positivity rate avg"] = '{:.2f}%'.format((total_r_pos_case_7/total_r_case_7)*100) if total_r_case_7 > 0 else "N/A"
+        result["7-day total positivity rate avg"] = '{:.2f}%'.format((total_pos_case_7/total_case_7)*100) if total_case_7 > 0 else "N/A"
         return result
 
     def get_manhole_map(self, date_value, mode="detection"):
