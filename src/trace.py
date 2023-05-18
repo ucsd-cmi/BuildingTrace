@@ -10,6 +10,7 @@ import numpy as np
 import sys
 import os
 
+DB_CLUSTER_IP = "10.8.4.97"
 
 class TraceError(Exception):
     """Base class for other exceptions"""
@@ -18,6 +19,10 @@ class TraceError(Exception):
 
 class InvalidDateError(TraceError):
     """Raised when the input date is invalid"""
+    pass
+
+class UnavailableDateError(TraceError):
+    """Raised when a date does not have CQ values available"""
     pass
 
 
@@ -30,7 +35,7 @@ class Trace:
         self.manhole_residential_map = {manhole:sum(self.residential_map[caan] for caan in caans) > 0 for manhole, caans in self.manhole_caan_mapping.items()}
     
     def get_manhole_caan_map(self):
-        ip = 'http://34.68.95.12:8080/query'
+        ip = f'http://{DB_CLUSTER_IP}:8080/query'
         data_string = '{"query": "query getManholeCaanMappings {getManholeCaanMappings { manholeID internalCaan }}"}'
         r = requests.post(ip, data=data_string, headers={"Content-Type":"application/json"})
         r_json = r.json()
@@ -38,7 +43,7 @@ class Trace:
         return manhole_map
 
     def get_residential_map(self):
-        ip = 'http://34.68.95.12:8080/query'
+        ip = f'http://{DB_CLUSTER_IP}:8080/query'
         data_string = '{"query": "query getBuildingInfo {getBuildingInfo { internalCaan isResidential }}"}'
         r = requests.post(ip, data=data_string, headers={"Content-Type":"application/json"})
         r_json = r.json()
@@ -59,7 +64,7 @@ class Trace:
         self.df = pd.DataFrame(table[3:], columns=table[2])
     
     def read_db(self, date_value):
-        ip = 'http://34.68.95.12:8080/query'
+        ip = f'http://{DB_CLUSTER_IP}:8080/query'
         date_formatted = datetime.strptime(date_value, "%m/%d/%y").isoformat() + "Z"
         data_string = '{"query": "query getQpcrCqs($startDate: Time!, $endDate: Time!) { getQpcrCqs(startDate: $startDate, endDate: $endDate) { date manholeID samplerID cqValue } }", "variables": {"startDate": "' + date_formatted + '", "endDate": "' + date_formatted + '"}}'
         # Exception will be thrown if the request failed
@@ -67,6 +72,11 @@ class Trace:
         r.raise_for_status()
         r_json = r.json()
         r_json = r_json['data']['getQpcrCqs']
+
+        # handle empty response
+        if len(r_json) == 0:
+            raise UnavailableDateError
+        
         db_df = pd.DataFrame.from_dict(r_json)
         dates = db_df['date'].unique()
         df = pd.pivot_table(db_df,index=['manholeID'], columns='date',values='cqValue', fill_value=0)
