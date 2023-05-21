@@ -21,11 +21,6 @@ class InvalidDateError(TraceError):
     """Raised when the input date is invalid"""
     pass
 
-class UnavailableDateError(TraceError):
-    """Raised when a date does not have CQ values available"""
-    pass
-
-
 class Trace:
     def __init__(self, date_value):
         self.read_db(date_value)
@@ -72,13 +67,11 @@ class Trace:
         r.raise_for_status()
         r_json = r.json()
         r_json = r_json['data']['getQpcrCqs']
-
-        # handle empty response
-        if len(r_json) == 0:
-            raise UnavailableDateError
-        
         db_df = pd.DataFrame.from_dict(r_json)
-        dates = db_df['date'].unique()
+        try:
+            dates = db_df['date'].unique()
+        except KeyError:
+            raise InvalidDateError
         df = pd.pivot_table(db_df,index=['manholeID'], columns='date',values='cqValue', fill_value=0)
         df.columns = [datetime.fromisoformat(i.replace("Z", "+00:00")).strftime("%-m/%-d/%y") for i in df.columns]
         df = df.reset_index()
