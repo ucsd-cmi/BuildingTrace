@@ -10,6 +10,7 @@ import numpy as np
 import sys
 import os
 
+DB_CLUSTER_IP = "10.8.4.97"
 
 class TraceError(Exception):
     """Base class for other exceptions"""
@@ -30,7 +31,7 @@ class Trace:
         self.manhole_residential_map = {manhole:sum(self.residential_map[caan] for caan in caans) > 0 for manhole, caans in self.manhole_caan_mapping.items()}
     
     def get_manhole_caan_map(self):
-        ip = 'http://34.68.95.12:8080/query'
+        ip = f'http://{DB_CLUSTER_IP}:8080/query'
         data_string = '{"query": "query getManholeCaanMappings {getManholeCaanMappings { manholeID internalCaan }}"}'
         r = requests.post(ip, data=data_string, headers={"Content-Type":"application/json"})
         r_json = r.json()
@@ -38,7 +39,7 @@ class Trace:
         return manhole_map
 
     def get_residential_map(self):
-        ip = 'http://34.68.95.12:8080/query'
+        ip = f'http://{DB_CLUSTER_IP}:8080/query'
         data_string = '{"query": "query getBuildingInfo {getBuildingInfo { internalCaan isResidential }}"}'
         r = requests.post(ip, data=data_string, headers={"Content-Type":"application/json"})
         r_json = r.json()
@@ -59,7 +60,7 @@ class Trace:
         self.df = pd.DataFrame(table[3:], columns=table[2])
     
     def read_db(self, date_value):
-        ip = 'http://34.68.95.12:8080/query'
+        ip = f'http://{DB_CLUSTER_IP}:8080/query'
         date_formatted = datetime.strptime(date_value, "%m/%d/%y").isoformat() + "Z"
         data_string = '{"query": "query getQpcrCqs($startDate: Time!, $endDate: Time!) { getQpcrCqs(startDate: $startDate, endDate: $endDate) { date manholeID samplerID cqValue } }", "variables": {"startDate": "' + date_formatted + '", "endDate": "' + date_formatted + '"}}'
         # Exception will be thrown if the request failed
