@@ -183,7 +183,7 @@ def write_date(date_val):
         ('date', date_val),
     )
     response = requests.get(
-        'https://coprocognos.ucsd.edu:5000/write_date', params=params)
+        'http://34.170.60.95:5939/write_date', params=params)
     reponse_json = response.json()
     print(reponse_json)
     return reponse_json
